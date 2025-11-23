@@ -99,4 +99,46 @@ HEADLESS=false
 
 提示：你也可以直接修改项目根目录的 `env.example` 后复制为 `.env` 使用。
 
+## 4. API 请求结构说明
+
+- 接口
+  - 方法：POST
+  - 路径：/run-case
+  - 头：Content-Type: application/json
+
+- 请求体字段
+  - task (string, 必填)：自然语言描述要执行的业务目标/步骤（尽量简洁）
+  - success_criteria (array<object>, 可选)：任务级断言（针对整个 task，而非逐步）
+    - type (string)：目前支持 title_contains | text_exists | url_contains
+    - value (string)：期望文本或片段
+    - selector (string, 可选)：可省略，默认走语义定位
+  - headless (boolean, 默认 true)：是否无头
+  - model (string, 可选)：大模型名（不传则使用 .env 的 LLM_MODEL）
+  - metadata (object, 可选)：自定义元信息（如 caseId）
+
+- 说明
+  - success_criteria 为“任务级断言”，用于对整个 task 结束后的状态做判断；不是逐步断言
+  - 如需逐步判断，建议将大流程拆成多个短 task 依次调用，或扩展协议为 steps 形式
+
+- 响应体字段
+  - ok (boolean)：是否成功
+  - message (string)：执行结果文案
+  - report_path (string)：HTML 报告路径（artifacts/reports/）
+  - raw (object)：browser-use 执行原始返回（结构化 JSON）
+
+- 示例（校验 GitHub 首页标题包含“GitHub”）
+```bash
+curl -X POST http://localhost:8000/run-case \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "task": "打开 https://github.com 并等待页面加载完成，用于后续校验。",
+    "success_criteria": [
+      {"type": "title_contains", "value": "GitHub"}
+    ],
+    "headless": false,
+    "model": "qwen-vl-plus",
+    "metadata": {"caseId": "github-title-001"}
+  }'
+```
+
 
