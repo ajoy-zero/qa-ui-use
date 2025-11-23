@@ -355,7 +355,11 @@ async def run_task_with_browser_use_async(
     llm = ChatOpenAI(model='qwen-vl-plus', api_key=api_key, base_url=base_url)
 
     # 构造 Agent：官方示例只传 task 与 llm
-    agent = Agent(task=composed_task, llm=llm)  # type: ignore
+    agent = Agent(
+        task=composed_task,
+        llm=llm,
+        use_vision=True,
+    )  # type: ignore
     if metadata:
         try:
             setattr(agent, "metadata", metadata)  # type: ignore[attr-defined]
