@@ -167,24 +167,62 @@ def run_task_with_browser_use(
 
     model_name = model or os.getenv("LLM_MODEL")
 
-    # 将结构化成功标准以自然语言附加，避免因版本 API 差异导致的失败
-    composed_task = task
-    if success_criteria:
-        try:
-            items = []
-            for c in success_criteria:
-                ctype = c.get("type")
-                selector = c.get("selector")
-                val = c.get("value")
-                if selector:
-                    items.append(f"- {ctype}: [{selector}] {val}")
-                else:
-                    items.append(f"- {ctype}: {val}")
-            if items:
-                composed_task += "\n成功标准：\n" + "\n".join(items)
-        except Exception:
-            # 安全降级
-            composed_task += "\n(包含成功标准)"
+    # 构造更稳定的提示词：系统规则 + 严格 JSON Schema + 任务与成功标准
+    def build_prompt(base_task: str, succ: Optional[Any]) -> str:
+        rules = (
+            "你是一名严格的 UI 自动化测试代理。\n"
+            "目标：1) 根据“任务（task）”在真实浏览器中稳定执行操作；"
+            "2) 根据“成功标准（success_criteria）”判定结果；"
+            "3) 只输出严格 JSON，满足下述 schema，不要任何多余文本。\n\n"
+            "稳定性规则（必须遵守）：\n"
+            "- 交互前确保元素可见且可点击；必要时滚动/等待网络空闲/等待过渡动画结束。\n"
+            "- 定位优先级：可见文本/语义 > role/aria/data-testid > 稳定 text/placeholder/label > CSS/XPath（尽量避免）。\n"
+            "- 尝试至多 2 次恢复（关闭弹窗、展开折叠、轻度滚动）；仍失败则停止并输出失败原因。\n"
+            "- 不要输出推理过程或链路思考；不要返回除 JSON 之外内容。\n"
+            "- 所有断言必须产出布尔结果与原因说明。\n\n"
+            "输出 JSON Schema（严格遵守键名与类型）：\n"
+            "{\n"
+            '  "ok": boolean,\n'
+            '  "status": "success" | "failed",\n'
+            '  "title": string,\n'
+            '  "url": string,\n'
+            '  "asserts": [\n'
+            "    {\n"
+            '      "name": string,\n'
+            '      "passed": boolean,\n'
+            '      "actual": string,\n'
+            '      "expected": string,\n'
+            '      "why_failed": string\n'
+            "    }\n"
+            "  ],\n"
+            '  "artifacts": { "screenshots": [string] },\n'
+            '  "errors": [string]\n'
+            "}\n\n"
+        )
+        succ_lines: list[str] = []
+        if succ:
+            try:
+                for c in succ:
+                    ctype = c.get("type")
+                    selector = c.get("selector")
+                    val = c.get("value")
+                    if selector:
+                        succ_lines.append(f"- {ctype}: [{selector}] {val}")
+                    else:
+                        succ_lines.append(f"- {ctype}: {val}")
+            except Exception:
+                pass
+        succ_block = "\n".join(succ_lines) if succ_lines else "(无)"
+        final_text = (
+            rules
+            + "任务（task）：\n"
+            + base_task
+            + "\n\n成功标准（success_criteria）：\n"
+            + succ_block
+            + "\n\n仅输出上述 JSON，不要任何其他文本。\n"
+        )
+        return final_text
+    composed_task = build_prompt(task, success_criteria)
 
     # 优先尝试通过 CDP 连接本地浏览器
     cdp_url = os.getenv("BROWSER_USE_CDP_URL")
@@ -258,19 +296,58 @@ async def run_task_with_browser_use_async(
     except Exception as e:
         raise RuntimeError("未安装或无法导入 browser-use，请先 `pip install browser-use`。") from e
 
-    composed_task = task
-    if success_criteria:
-        try:
-            items = []
-            for c in success_criteria:
-                ctype = c.get("type")
-                selector = c.get("selector")
-                val = c.get("value")
-                items.append(f"- {ctype}: {('['+selector+'] ') if selector else ''}{val}")
-            if items:
-                composed_task += "\n成功标准：\n" + "\n".join(items)
-        except Exception:
-            composed_task += "\n(包含成功标准)"
+    def build_prompt(base_task: str, succ: Optional[Any]) -> str:
+        rules = (
+            "你是一名严格的 UI 自动化测试代理。\n"
+            "目标：1) 根据“任务（task）”在真实浏览器中稳定执行操作；"
+            "2) 根据“成功标准（success_criteria）”判定结果；"
+            "3) 只输出严格 JSON，满足下述 schema，不要任何多余文本。\n\n"
+            "稳定性规则（必须遵守）：\n"
+            "- 交互前确保元素可见且可点击；必要时滚动/等待网络空闲/等待过渡动画结束。\n"
+            "- 定位优先级：可见文本/语义 > role/aria/data-testid > 稳定 text/placeholder/label > CSS/XPath（尽量避免）。\n"
+            "- 尝试至多 2 次恢复（关闭弹窗、展开折叠、轻度滚动）；仍失败则停止并输出失败原因。\n"
+            "- 不要输出推理过程或链路思考；不要返回除 JSON 之外内容。\n"
+            "- 所有断言必须产出布尔结果与原因说明。\n\n"
+            "输出 JSON Schema（严格遵守键名与类型）：\n"
+            "{\n"
+            '  "ok": boolean,\n'
+            '  "status": "success" | "failed",\n'
+            '  "title": string,\n'
+            '  "url": string,\n'
+            '  "asserts": [\n'
+            "    {\n"
+            '      "name": string,\n'
+            '      "passed": boolean,\n'
+            '      "actual": string,\n'
+            '      "expected": string,\n'
+            '      "why_failed": string\n'
+            "    }\n"
+            "  ],\n"
+            '  "artifacts": { "screenshots": [string] },\n'
+            '  "errors": [string]\n'
+            "}\n\n"
+        )
+        succ_lines: list[str] = []
+        if succ:
+            try:
+                for c in succ:
+                    ctype = c.get("type")
+                    selector = c.get("selector")
+                    val = c.get("value")
+                    succ_lines.append(f"- {ctype}: {('['+selector+'] ') if selector else ''}{val}")
+            except Exception:
+                pass
+        succ_block = "\n".join(succ_lines) if succ_lines else "(无)"
+        final_text = (
+            rules
+            + "任务（task）：\n"
+            + base_task
+            + "\n\n成功标准（success_criteria）：\n"
+            + succ_block
+            + "\n\n仅输出上述 JSON，不要任何其他文本。\n"
+        )
+        return final_text
+    composed_task = build_prompt(task, success_criteria)
     base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key = os.getenv('ALIBABA_CLOUD')
 
