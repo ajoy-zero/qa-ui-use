@@ -1,0 +1,13 @@
+pytest>=8.2.0
+pytest-html>=4.1.1
+pytest-asyncio>=0.23.8
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.6
+pydantic>=2.9.0
+httpx>=0.27.2
+typing-extensions>=4.12.2
+python-dotenv>=1.0.1
+# 可选：安装后可启用 browser-use 集成
+# browser-use>=0.1.0
+
+
